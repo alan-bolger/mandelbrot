@@ -5,7 +5,7 @@
 /// </summary>
 PixelGrid::PixelGrid(int t_x, int t_y)
 {
-	m_pixelArray = new uint8_t[t_x * t_y * 4];
+	m_pixelArray.resize(t_x * t_y * 4);
 	m_pixelBuffer.create(t_x, t_y);
 
 	m_arrayWidth = t_x;
@@ -20,7 +20,7 @@ PixelGrid::PixelGrid(int t_x, int t_y)
 /// </summary>
 PixelGrid::~PixelGrid()
 {
-	delete[] m_pixelArray;
+	// Nothing to delete
 }
 
 /// <summary>
@@ -77,7 +77,7 @@ sf::Color PixelGrid::getPixel(int t_x, int t_y)
 /// <returns>A reference to a texture with the contents of the pixel array copied to it.</returns>
 sf::Texture &PixelGrid::getPixelBuffer()
 {
-	m_pixelBuffer.update(m_pixelArray);
+	m_pixelBuffer.update(&m_pixelArray.front());
 
 	return m_pixelBuffer;
 }

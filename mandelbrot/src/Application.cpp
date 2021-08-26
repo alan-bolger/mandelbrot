@@ -1,21 +1,23 @@
 #include "Application.h"
 
+std::atomic<int> Globals::WORKER_COMPLETE = 0;
+
 /// <summary>
 /// Application constructor.
 /// </summary>
-Application::Application() : m_window{ sf::VideoMode{ g_screenWidth, g_screenHeight, 32 }, "Mandelbrot Fractals", sf::Style::Default }
+Application::Application() : m_window{ sf::VideoMode{ Globals::SCREEN_WIDTH, Globals::SCREEN_HEIGHT, 32 }, "Mandelbrot Fractals", sf::Style::Default }
 {
 	// Load app font
-	m_font.loadFromFile("assets/fonts/default.ttf");
+	m_font.loadFromMemory(Globals::DEFAULT_FONT, sizeof(uint8_t) * (size_t)75864);
 
 	// Set render texture size
-	m_renderTexture.create(g_screenWidth, g_screenHeight);
+	m_renderTexture.create(Globals::SCREEN_WIDTH, Globals::SCREEN_HEIGHT);
 
 	// Align memory
-	m_fractal = (int*)_aligned_malloc(size_t(g_screenWidth) * size_t(g_screenHeight) * sizeof(int), 64);
+	m_fractal = (int*)_aligned_malloc(size_t(Globals::SCREEN_WIDTH) * size_t(Globals::SCREEN_HEIGHT) * sizeof(int), 64);
 
-	// Create pixel grid
-	m_pixelGrid = new PixelGrid(g_screenWidth, g_screenHeight);
+	// Initialise the thread pool
+	threadPoolInit();
 }
 
 /// <summary>
@@ -23,7 +25,21 @@ Application::Application() : m_window{ sf::VideoMode{ g_screenWidth, g_screenHei
 /// </summary>
 Application::~Application()
 {
-	delete[] m_pixelGrid;
+	// Stop worker threads
+	for (int i = 0; i < Globals::MAX_THREADS; i++)
+	{
+		m_workers[i].m_alive = false;
+		m_workers[i].m_cvStart.notify_one();
+	}
+
+	// Clean up worker threads
+	for (int i = 0; i < Globals::MAX_THREADS; i++)
+	{
+		m_workers[i].m_thread.join();
+	}		
+
+	// Clean up memory
+	_aligned_free(m_fractal);
 }
 
 /// <summary>
@@ -33,11 +49,10 @@ void Application::run()
 {
 	sf::Clock f_clock;
 	sf::Time f_timeSinceLastUpdate = sf::Time::Zero;
-	sf::Time f_timePerFrame = sf::seconds(1.f / 60.f);
+	sf::Time f_timePerFrame = sf::seconds(1.f / 30.f);
 
 	while (m_window.isOpen() && !m_exitGame)
 	{
-		processEvents();
 		f_timeSinceLastUpdate += f_clock.restart();
 
 		while (f_timeSinceLastUpdate > f_timePerFrame)
@@ -46,7 +61,7 @@ void Application::run()
 			processEvents();
 			update();
 			draw();
-		}
+		}		
 	}
 }
 
@@ -69,6 +84,18 @@ void Application::processEvents()
 			if (sf::Keyboard::Escape == f_event.key.code)
 			{
 				m_exitGame = true;
+			}
+		}
+
+		if (sf::Event::KeyReleased == f_event.type)
+		{
+			if (sf::Keyboard::Num1 == f_event.key.code)
+			{
+				m_mode = 1;
+			}
+			else if (sf::Keyboard::Num2 == f_event.key.code)
+			{
+				m_mode = 2;
 			}
 		}
 	}
@@ -117,7 +144,7 @@ void Application::update()
 	m_offset += (f_mouseBeforeZoom - f_mouseAfterZoom);
 
 	Vector2 f_pixTL = { 0, 0 };
-	Vector2 f_pixBR = { g_screenWidth, g_screenHeight };
+	Vector2 f_pixBR = { Globals::SCREEN_WIDTH, Globals::SCREEN_HEIGHT };
 	Vector2 f_fracTL = { -2.0, -1.0 };
 	Vector2 f_fracBR = { 1.0, 1.0 };
 
@@ -143,13 +170,13 @@ void Application::update()
 	auto f_start = std::chrono::high_resolution_clock::now();
 
 	// Do the computation
-	switch (m_mode)
+	if (m_mode == 1)
 	{
-		case 0: 
-		{
-			createFractalBasic(f_pixTL, f_pixBR, f_fracTL, f_fracBR, m_iterations);
-			break;
-		} 
+		createFractalNoMT(f_pixTL, f_pixBR, f_fracTL, f_fracBR, m_iterations);
+	}
+	else if (m_mode == 2)
+	{
+		createFractalMT(f_pixTL, f_pixBR, f_fracTL, f_fracBR, m_iterations);
 	}
 
 	// Stop timing
@@ -157,16 +184,18 @@ void Application::update()
 	std::chrono::duration<double> elapsedTime = f_stop - f_start;
 
 	// Render result to screen
-	for (int y = 0; y < g_screenHeight; y++)
+	for (int y = 0; y < Globals::SCREEN_HEIGHT; y++)
 	{
-		for (int x = 0; x < g_screenWidth; x++)
+		for (int x = 0; x < Globals::SCREEN_WIDTH; x++)
 		{
-			int i = m_fractal[y * g_screenWidth + x];
+			int i = m_fractal[y * Globals::SCREEN_WIDTH + x];
 			float n = (float)i;
 			float a = 0.1f;
 
 			// Credit to @Eriksonn for this - it converts the fractal into a colour
-			m_pixelGrid->setPixel(x, y, sf::Color(
+			// RBG values are normalised between 0 and 1 so I've multiplied them by 255
+			// so they work properly with SFML ~ AB
+			m_pixelGrid.setPixel(x, y, sf::Color(
 				(0.5f * sin(a * n) + 0.5f) * 255.0f,			// R
 				(0.5f * sin(a * n + 2.094f) + 0.5f) * 255.0f,	// G
 				(0.5f * sin(a * n + 4.188f) + 0.5f) * 255.0f)); // B
@@ -186,10 +215,10 @@ void Application::draw()
 	m_window.clear();
 
 	// Draw pixel grid to render texture
-	sf::Sprite f_pixelGrid(m_pixelGrid->getPixelBuffer());
+	sf::Sprite f_pixelGrid(m_pixelGrid.getPixelBuffer());
 	m_renderTexture.draw(f_pixelGrid);
 
-	drawUI(); // This gets drawn the the render texture
+	drawText(); // This gets drawn to the render texture
 
 	// Display the render texture
 	sf::Sprite f_finishedRender(m_renderTexture.getTexture());
@@ -224,19 +253,20 @@ void Application::drawString(int t_x, int t_y, std::string t_string, sf::Color t
 /// <summary>
 /// Draw the information text.
 /// </summary>
-void Application::drawUI()
+void Application::drawText()
 {
-	switch (m_mode)
+	if (m_mode == 1)
 	{
-		case 0: 
-		{
-			drawString(10, g_screenHeight - 70, "1. BASIC METHOD", sf::Color::White);
-			break;
-		}
+		drawString(10, Globals::SCREEN_HEIGHT - 70, "1. NO MULTI-THREADING", sf::Color::White);
+	}
+	else if (m_mode == 2)
+	{
+		drawString(10, Globals::SCREEN_HEIGHT - 70, "2. MULTI-THREADING (USING THREAD POOL)", sf::Color::White);
 	}
 
-	drawString(10, g_screenHeight - 50, "TIME TAKEN: " + std::to_string(m_elapsedTime.count()) + "s", sf::Color::White);
-	drawString(10, g_screenHeight - 30, "ITERATIONS: " + std::to_string(m_iterations), sf::Color::White);
+	drawString(10, Globals::SCREEN_HEIGHT - 50, "TIME TAKEN: " + std::to_string(m_elapsedTime.count()) + "s", sf::Color::White);
+	drawString(10, Globals::SCREEN_HEIGHT - 30, "ITERATIONS: " + std::to_string(m_iterations), sf::Color::White);
+	drawString(Globals::SCREEN_WIDTH - 245, Globals::SCREEN_HEIGHT - 30, "BOLGER'S MANDELBROT", sf::Color::Black);
 }
 
 /// <summary>
@@ -262,23 +292,23 @@ void Application::screenToWorld(const Vector2 &t_screen, Vector2 &t_world)
 }
 
 /// <summary>
-/// Create fractal using a basic and unoptimised algorithm.
+/// Create fractal using a basic algorithm (taken from Wikipedia).
 /// </summary>
 /// <param name="t_pixTL">Pixel top left coordinate.</param>
 /// <param name="t_pixBR">Pixel top right coordinate.</param>
 /// <param name="t_fracTL">Fractal top left coordinate.</param>
 /// <param name="t_fracBR">Fractal top right coordinate.</param>
 /// <param name="t_iterations">The number of iterations.</param>
-void Application::createFractalBasic(const Vector2 &t_pixTL, const Vector2 &t_pixBR, const Vector2 &t_fracTL, const Vector2 &t_fracBR, const int t_iterations)
+void Application::createFractalNoMT(const Vector2 &t_pixTL, const Vector2 &t_pixBR, const Vector2 &t_fracTL, const Vector2 &t_fracBR, const int t_iterations)
 {
-	double x_scale = (t_fracBR.x - t_fracTL.x) / (double(t_pixBR.x) - double(t_pixTL.x));
-	double y_scale = (t_fracBR.y - t_fracTL.y) / (double(t_pixBR.y) - double(t_pixTL.y));
+	double f_scaleX = (t_fracBR.x - t_fracTL.x) / (double(t_pixBR.x) - double(t_pixTL.x));
+	double f_scaleY = (t_fracBR.y - t_fracTL.y) / (double(t_pixBR.y) - double(t_pixTL.y));
 
 	for (int y = t_pixTL.y; y < t_pixBR.y; y++)
 	{
 		for (int x = t_pixTL.x; x < t_pixBR.x; x++)
 		{
-			std::complex<double> f_c(x * x_scale + t_fracTL.x, y * y_scale + t_fracTL.y);
+			std::complex<double> f_c(x * f_scaleX + t_fracTL.x, y * f_scaleY + t_fracTL.y);
 			std::complex<double> f_z(0, 0);
 
 			int f_n = 0;
@@ -289,8 +319,52 @@ void Application::createFractalBasic(const Vector2 &t_pixTL, const Vector2 &t_pi
 				f_n++;
 			}
 
-			m_fractal[y * g_screenWidth + x] = f_n;
+			m_fractal[y * Globals::SCREEN_WIDTH + x] = f_n;
 		}
 	}
 }
 
+/// <summary>
+/// Create fractal using multi-threading (thread pooling).
+/// </summary>
+/// <param name="t_pixTL">Pixel top left coordinate.</param>
+/// <param name="t_pixBR">Pixel top right coordinate.</param>
+/// <param name="t_fracTL">Fractal top left coordinate.</param>
+/// <param name="t_fracBR">Fractal top right coordinate.</param>
+/// <param name="t_iterations">The number of iterations.</param>
+void Application::createFractalMT(const Vector2 &t_pixTL, const Vector2 &t_pixBR, const Vector2 &t_fracTL, const Vector2 &t_fracBR, const int t_iterations)
+{
+	int nSectionWidth = (t_pixBR.x - t_pixTL.x) / Globals::MAX_THREADS;
+	double dFractalWidth = (t_fracBR.x - t_fracTL.x) / double(Globals::MAX_THREADS);
+	Globals::WORKER_COMPLETE = 0;
+
+	for (size_t i = 0; i < Globals::MAX_THREADS; i++)
+	{
+		m_workers[i].start(
+			Vector2(t_pixTL.x + nSectionWidth * i, t_pixTL.y),
+			Vector2(t_pixTL.x + nSectionWidth * (i + 1), t_pixBR.y),
+			Vector2(t_fracTL.x + dFractalWidth * double(i), t_fracTL.y),
+			Vector2(t_fracTL.x + dFractalWidth * double(i + 1), t_fracBR.y),
+			t_iterations);
+	}
+
+	// Wait for all workers to complete
+	while (Globals::WORKER_COMPLETE < Globals::MAX_THREADS)
+	{
+		// Do nothing
+	}
+}
+
+/// <summary>
+/// Initialise the thread pool.
+/// </summary>
+void Application::threadPoolInit()
+{
+	for (int i = 0; i < Globals::MAX_THREADS; i++)
+	{
+		m_workers[i].m_alive = true;
+		m_workers[i].m_fractal = m_fractal;
+		m_workers[i].m_screenWidth = Globals::SCREEN_WIDTH;
+		m_workers[i].m_thread = std::thread(&WorkerThread::createFractal, &m_workers[i]);
+	}
+}

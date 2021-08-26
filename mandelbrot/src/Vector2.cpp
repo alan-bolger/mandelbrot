@@ -13,7 +13,7 @@ Vector2::Vector2() : x{ 0.0 }, y{ 0.0 }
 }
 
 /// <summary>
-/// Vector2 destructor.
+/// Vector2 constructor.
 /// </summary>
 /// <param name="t_x">X</param>
 /// <param name="t_y">Y</param>
@@ -52,7 +52,7 @@ Vector2::Vector2(sf::Vector2u t_vector) : x{ static_cast<double>(t_vector.x) }, 
 #pragma endregion
 
 /// <summary>
-/// Destructor for the Vector2 class.
+/// Vector2 destructor.
 /// </summary>
 Vector2::~Vector2()
 {

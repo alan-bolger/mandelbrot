@@ -15,7 +15,7 @@ public:
 	sf::Texture &getPixelBuffer();
 
 private:
-	uint8_t *m_pixelArray;
+	std::vector<uint8_t> m_pixelArray;
 	sf::Texture m_pixelBuffer;
 	int m_arrayWidth;
 	int m_arrayHeight;

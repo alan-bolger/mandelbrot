@@ -20,14 +20,24 @@
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="src\Application.cpp" />
+    <ClCompile Include="src\Globals.cpp" />
     <ClCompile Include="src\Main.cpp" />
     <ClCompile Include="src\PixelGrid.cpp" />
     <ClCompile Include="src\Vector2.cpp" />
+    <ClCompile Include="src\WorkerThread.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="h\Application.h" />
+    <ClInclude Include="h\Globals.h" />
     <ClInclude Include="h\PixelGrid.h" />
     <ClInclude Include="h\Vector2.h" />
+    <ClInclude Include="h\WorkerThread.h" />
+  </ItemGroup>
+  <ItemGroup>
+    <ResourceCompile Include="mandelbrot.rc" />
+  </ItemGroup>
+  <ItemGroup>
+    <Image Include="resources\app-icon.ico" />
   </ItemGroup>
   <PropertyGroup Label="Globals">
     <VCProjectVersion>15.0</VCProjectVersion>
@@ -157,6 +167,7 @@
       <OptimizeReferences>true</OptimizeReferences>
       <AdditionalDependencies>sfml-graphics-s.lib;sfml-window-s.lib;sfml-system-s.lib;opengl32.lib;winmm.lib;gdi32.lib;freetype.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <AdditionalLibraryDirectories>$(SFML64_SDK)\lib</AdditionalLibraryDirectories>
+      <SubSystem>Windows</SubSystem>
     </Link>
   </ItemDefinitionGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

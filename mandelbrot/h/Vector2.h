@@ -4,6 +4,8 @@
 #include <SFML/Graphics.hpp>
 #include <string>
 
+// Last updated on 25.08.21 ~ AJB
+
 class Vector2
 {
 public:
@@ -33,7 +35,6 @@ public:
 	Vector2 operator*(const float t_scalar) const;
 	Vector2 operator*(const int t_scalar) const;
 	Vector2 operator*=(const float t_scalar);
-
 
 	Vector2 operator/(const double t_scalar) const;
 	Vector2 operator/(const float t_scalar) const;
