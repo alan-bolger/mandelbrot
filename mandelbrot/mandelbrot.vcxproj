@@ -33,12 +33,6 @@
     <ClInclude Include="h\Vector2.h" />
     <ClInclude Include="h\WorkerThread.h" />
   </ItemGroup>
-  <ItemGroup>
-    <ResourceCompile Include="mandelbrot.rc" />
-  </ItemGroup>
-  <ItemGroup>
-    <Image Include="resources\app-icon.ico" />
-  </ItemGroup>
   <PropertyGroup Label="Globals">
     <VCProjectVersion>15.0</VCProjectVersion>
     <ProjectGuid>{9bbcff77-a2c9-43bc-8178-d04e8c97783b}</ProjectGuid>

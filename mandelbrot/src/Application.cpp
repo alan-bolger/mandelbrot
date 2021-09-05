@@ -5,10 +5,10 @@ std::atomic<int> Globals::WORKER_COMPLETE = 0;
 /// <summary>
 /// Application constructor.
 /// </summary>
-Application::Application() : m_window{ sf::VideoMode{ Globals::SCREEN_WIDTH, Globals::SCREEN_HEIGHT, 32 }, "Mandelbrot Fractals", sf::Style::Default }
+Application::Application() : m_window{ sf::VideoMode{ Globals::SCREEN_WIDTH, Globals::SCREEN_HEIGHT, 32 }, "Mandelbrot", sf::Style::Default }
 {
 	// Load app font
-	m_font.loadFromMemory(Globals::DEFAULT_FONT, sizeof(uint8_t) * (size_t)75864);
+	m_font.loadFromMemory(Globals::DEFAULT_FONT, (size_t)75864 * sizeof(uint8_t));
 
 	// Set render texture size
 	m_renderTexture.create(Globals::SCREEN_WIDTH, Globals::SCREEN_HEIGHT);
@@ -86,18 +86,6 @@ void Application::processEvents()
 				m_exitGame = true;
 			}
 		}
-
-		if (sf::Event::KeyReleased == f_event.type)
-		{
-			if (sf::Keyboard::Num1 == f_event.key.code)
-			{
-				m_mode = 1;
-			}
-			else if (sf::Keyboard::Num2 == f_event.key.code)
-			{
-				m_mode = 2;
-			}
-		}
 	}
 }
 
@@ -170,14 +158,7 @@ void Application::update()
 	auto f_start = std::chrono::high_resolution_clock::now();
 
 	// Do the computation
-	if (m_mode == 1)
-	{
-		createFractalNoMT(f_pixTL, f_pixBR, f_fracTL, f_fracBR, m_iterations);
-	}
-	else if (m_mode == 2)
-	{
-		createFractalMT(f_pixTL, f_pixBR, f_fracTL, f_fracBR, m_iterations);
-	}
+	createFractal(f_pixTL, f_pixBR, f_fracTL, f_fracBR, m_iterations);
 
 	// Stop timing
 	auto f_stop = std::chrono::high_resolution_clock::now();
@@ -255,18 +236,9 @@ void Application::drawString(int t_x, int t_y, std::string t_string, sf::Color t
 /// </summary>
 void Application::drawText()
 {
-	if (m_mode == 1)
-	{
-		drawString(10, Globals::SCREEN_HEIGHT - 70, "1. NO MULTI-THREADING", sf::Color::White);
-	}
-	else if (m_mode == 2)
-	{
-		drawString(10, Globals::SCREEN_HEIGHT - 70, "2. MULTI-THREADING (USING THREAD POOL)", sf::Color::White);
-	}
-
 	drawString(10, Globals::SCREEN_HEIGHT - 50, "TIME TAKEN: " + std::to_string(m_elapsedTime.count()) + "s", sf::Color::White);
 	drawString(10, Globals::SCREEN_HEIGHT - 30, "ITERATIONS: " + std::to_string(m_iterations), sf::Color::White);
-	drawString(Globals::SCREEN_WIDTH - 245, Globals::SCREEN_HEIGHT - 30, "BOLGER'S MANDELBROT", sf::Color::Black);
+	drawString(Globals::SCREEN_WIDTH - 136, Globals::SCREEN_HEIGHT - 30, "MANDELBROT", sf::Color::White);
 }
 
 /// <summary>
@@ -292,39 +264,6 @@ void Application::screenToWorld(const Vector2 &t_screen, Vector2 &t_world)
 }
 
 /// <summary>
-/// Create fractal using a basic algorithm (taken from Wikipedia).
-/// </summary>
-/// <param name="t_pixTL">Pixel top left coordinate.</param>
-/// <param name="t_pixBR">Pixel top right coordinate.</param>
-/// <param name="t_fracTL">Fractal top left coordinate.</param>
-/// <param name="t_fracBR">Fractal top right coordinate.</param>
-/// <param name="t_iterations">The number of iterations.</param>
-void Application::createFractalNoMT(const Vector2 &t_pixTL, const Vector2 &t_pixBR, const Vector2 &t_fracTL, const Vector2 &t_fracBR, const int t_iterations)
-{
-	double f_scaleX = (t_fracBR.x - t_fracTL.x) / (double(t_pixBR.x) - double(t_pixTL.x));
-	double f_scaleY = (t_fracBR.y - t_fracTL.y) / (double(t_pixBR.y) - double(t_pixTL.y));
-
-	for (int y = t_pixTL.y; y < t_pixBR.y; y++)
-	{
-		for (int x = t_pixTL.x; x < t_pixBR.x; x++)
-		{
-			std::complex<double> f_c(x * f_scaleX + t_fracTL.x, y * f_scaleY + t_fracTL.y);
-			std::complex<double> f_z(0, 0);
-
-			int f_n = 0;
-
-			while (std::abs(f_z) < 2.0 && f_n < t_iterations)
-			{
-				f_z = (f_z * f_z) + f_c;
-				f_n++;
-			}
-
-			m_fractal[y * Globals::SCREEN_WIDTH + x] = f_n;
-		}
-	}
-}
-
-/// <summary>
 /// Create fractal using multi-threading (thread pooling).
 /// </summary>
 /// <param name="t_pixTL">Pixel top left coordinate.</param>
@@ -332,26 +271,27 @@ void Application::createFractalNoMT(const Vector2 &t_pixTL, const Vector2 &t_pix
 /// <param name="t_fracTL">Fractal top left coordinate.</param>
 /// <param name="t_fracBR">Fractal top right coordinate.</param>
 /// <param name="t_iterations">The number of iterations.</param>
-void Application::createFractalMT(const Vector2 &t_pixTL, const Vector2 &t_pixBR, const Vector2 &t_fracTL, const Vector2 &t_fracBR, const int t_iterations)
+void Application::createFractal(const Vector2 &t_pixTL, const Vector2 &t_pixBR, const Vector2 &t_fracTL, const Vector2 &t_fracBR, const int t_iterations)
 {
-	int nSectionWidth = (t_pixBR.x - t_pixTL.x) / Globals::MAX_THREADS;
-	double dFractalWidth = (t_fracBR.x - t_fracTL.x) / double(Globals::MAX_THREADS);
+	int f_sectionWidth = (t_pixBR.x - t_pixTL.x) / Globals::MAX_THREADS;
+	double f_fractalWidth = (t_fracBR.x - t_fracTL.x) / double(Globals::MAX_THREADS);
+
 	Globals::WORKER_COMPLETE = 0;
 
 	for (size_t i = 0; i < Globals::MAX_THREADS; i++)
 	{
 		m_workers[i].start(
-			Vector2(t_pixTL.x + nSectionWidth * i, t_pixTL.y),
-			Vector2(t_pixTL.x + nSectionWidth * (i + 1), t_pixBR.y),
-			Vector2(t_fracTL.x + dFractalWidth * double(i), t_fracTL.y),
-			Vector2(t_fracTL.x + dFractalWidth * double(i + 1), t_fracBR.y),
+			Vector2(t_pixTL.x + f_sectionWidth * i, t_pixTL.y),
+			Vector2(t_pixTL.x + f_sectionWidth * (i + 1), t_pixBR.y),
+			Vector2(t_fracTL.x + f_fractalWidth * double(i), t_fracTL.y),
+			Vector2(t_fracTL.x + f_fractalWidth * double(i + 1), t_fracBR.y),
 			t_iterations);
 	}
 
 	// Wait for all workers to complete
 	while (Globals::WORKER_COMPLETE < Globals::MAX_THREADS)
 	{
-		// Do nothing
+		// Blip, bloop, bleep!
 	}
 }
 

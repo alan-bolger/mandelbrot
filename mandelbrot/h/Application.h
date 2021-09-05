@@ -16,7 +16,6 @@ class Application
 {
 public:
 	int *m_fractal = nullptr;
-	int m_mode = 2;
 	int m_iterations = 1024;
 
 	Application();
@@ -44,8 +43,7 @@ private:
 	void drawText();
 	void worldToScreen(const Vector2 &t_world, Vector2 &t_screen);
 	void screenToWorld(const Vector2 &t_screen, Vector2 &t_world);
-	void createFractalNoMT(const Vector2 &t_pixTL, const Vector2 &t_pixBR, const Vector2 &t_fracTL, const Vector2 &t_fracBR, const int t_iterations);
-	void createFractalMT(const Vector2 &t_pixTL, const Vector2 &t_pixBR, const Vector2 &t_fracTL, const Vector2 &t_fracBR, const int t_iterations);
+	void createFractal(const Vector2 &t_pixTL, const Vector2 &t_pixBR, const Vector2 &t_fracTL, const Vector2 &t_fracBR, const int t_iterations);
 	void threadPoolInit();
 };
 
